@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Global Expense Portal - Batch Export v4.1</title>
+    <title>Global Expense Portal - API Integrated v4.2</title>
+    <script src="https://alcdn.msauth.net/browser/2.35.0/js/msal-browser.min.js"></script>
     <style>
         /* Base Styling */
         body { font-family: 'Segoe UI', Arial, sans-serif; background-color: #f3f2f1; margin: 0; padding: 0; color: #323130; }
@@ -18,49 +19,47 @@
         .form-group { margin-top: 15px; }
         .form-group label { display: block; font-size: 14px; font-weight: 600; margin-bottom: 5px; }
         .form-control { width: 100%; padding: 12px; border: 1px solid #a6a6a6; border-radius: 6px; box-sizing: border-box; font-size: 16px; font-family: inherit; }
-        .form-control:focus { outline: none; border-color: #0078d4; }
         
-        /* Buttons - FIXED BOX-SIZING */
+        /* Buttons */
         .btn { padding: 14px; border-radius: 6px; cursor: pointer; border: none; font-size: 16px; font-weight: bold; width: 100%; text-align: center; display: block; transition: 0.2s; box-sizing: border-box; text-decoration: none; }
         .btn-primary { background: #0078d4; color: white; }
-        .btn-primary:hover { background: #005a9e; }
         .btn-outline { background: white; color: #0078d4; border: 1px solid #0078d4; }
-        .btn-outline:hover { background: #f3f2f1; }
         .btn-success { background: #107c41; color: white; margin-top: 15px; }
-        .btn-success:hover { background: #0b5a30; }
-        .btn-danger { background: #a4262c; color: white; padding: 6px 12px; font-size: 12px; width: auto; border-radius: 4px; }
+        .btn-danger { background: #a4262c; color: white; padding: 6px 12px; font-size: 12px; width: auto; border-radius: 4px; border: none; cursor: pointer; }
 
-        /* Queue List */
+        /* Item Row */
         .item-row { display: flex; align-items: center; background: white; padding: 15px; border-radius: 8px; margin-top: 10px; border: 1px solid #edebe9; gap: 15px; box-sizing: border-box; }
         .item-thumb { width: 80px; height: 80px; border-radius: 4px; object-fit: cover; border: 1px solid #ddd; flex-shrink: 0; }
-        .item-info { flex-grow: 1; min-width: 0; } /* min-width prevents flex items from overflowing */
-        .id-input { width: 100% !important; border-color: #0078d4 !important; font-weight: bold; margin-top: 8px; }
-
-        input[type="file"] { display: none; }
-        .hidden { display: none; }
-        .status-tag { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: #fff4ce; color: #797775; font-weight: bold; margin-left: 5px; vertical-align: middle; }
+        .item-info { flex-grow: 1; min-width: 0; }
+        
+        /* Overlay */
+        .login-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.95); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 9999; }
+        .hidden { display: none !important; }
     </style>
 </head>
 <body>
 
+    <div id="login-screen" class="login-overlay">
+        <h2 style="color: #0078d4; margin-bottom: 20px;">Global Expense Portal</h2>
+        <button class="btn btn-primary" style="width: 250px;" onclick="signIn()">Sign in with Microsoft Account</button>
+    </div>
+
     <div class="header">
         <span>Global Expense Portal</span>
-        <span style="font-size: 14px; font-weight: normal;">User: Jack Kuo</span>
+        <span id="display-name" style="font-size: 14px; font-weight: normal;"></span>
     </div>
 
     <div class="container">
         <div class="card">
             <h3 class="section-title">New Request</h3>
             
-            <div style="background: #f8f8f8; padding: 12px; border-radius: 6px; margin-top: 15px; font-size: 14px; border-left: 4px solid #888;">
-                <strong>Auto-fetched Data:</strong><br>
-                Date: <span id="fetched-date">Jan 29, 2026</span> | 
-                Amount: <span id="fetched-amount" style="color:#d83b01; font-weight:bold;">$179.31</span>
+            <div id="data-status" style="background: #f8f8f8; padding: 12px; border-radius: 6px; margin-top: 15px; font-size: 14px; border-left: 4px solid #888;">
+                <strong>Waiting for login...</strong>
             </div>
 
             <div class="form-group">
                 <label>Merchant Name</label>
-                <input type="text" id="new-merchant" class="form-control" placeholder="e.g., Uber, Starbucks, Hilton">
+                <input type="text" id="new-merchant" class="form-control" placeholder="e.g., Starbucks">
             </div>
 
             <div class="form-group">
@@ -69,7 +68,6 @@
                     <option value="Transportation">🚗 Transportation</option>
                     <option value="Meals" selected>🍔 Meals & Entertainment</option>
                     <option value="Accommodation">🏨 Accommodation</option>
-                    <option value="Gifts">🎁 Business Gifts</option>
                 </select>
             </div>
 
@@ -90,99 +88,118 @@
                 <h3 class="section-title">Queue & Batch Export</h3>
                 <button class="btn-danger" onclick="clearHistory()">🗑️ Clear History</button>
             </div>
-            
             <div id="items-container">
                 <p id="empty-msg" style="text-align: center; color: #666; padding: 40px; background: #fff; border-radius: 8px;">Your queue is currently empty.</p>
             </div>
-            
             <div id="export-section" class="hidden">
-                <p style="font-size: 12px; color: #666; margin-top: 15px; background: #fff; padding: 10px; border-radius: 4px; border-left: 4px solid #107c41;">
-                    <b>Report Logic:</b> Items will be sorted <b>numerically</b> by Legacy ID in the final export for easy comparison with the old system.
-                </p>
-                <button class="btn btn-success" id="export-btn" onclick="exportSelected()">📥 Export Selected to Batch Report (HTML)</button>
+                <button class="btn btn-success" onclick="exportSelected()">📥 Export Selected to Batch Report (HTML)</button>
             </div>
         </div>
     </div>
 
     <script>
+        // ======= 1. API 配置 =======
+        const msalConfig = {
+            auth: {
+                clientId: "cbe1c29b-f66b-4726-b50d-17dc5098a0c1",
+                authority: "https://login.microsoftonline.com/27a26ea8-6b7d-4465-b025-bea752e8e082",
+                redirectUri: window.location.origin + window.location.pathname
+            }
+        };
+
+        const sharepointConfig = {
+            siteId: "aseus-my.sharepoint.com,45734fb1-d80c-489a-b75d-447fc8a97dbf,57e3cc08-0f5a-472e-89a1-77889e917dbf",
+            listId: "e6db8eda-1975-44c5-b45b-b2251f1e27f4"
+        };
+
+        const myMsal = new msal.PublicClientApplication(msalConfig);
+        let fetchedData = { date: "Loading...", amount: "0.00" };
         let expenseItems = [];
         let currentFileData = "";
 
-        // Handle File Selection and Preview
-        function handleFileSelect(input) {
-            const file = input.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    currentFileData = e.target.result;
-                    const preview = document.getElementById('temp-preview');
-                    preview.src = currentFileData;
-                    preview.classList.remove('hidden');
-                    document.getElementById('file-label').innerHTML = "✅ Receipt Attached";
-                    document.getElementById('file-label').style.color = "#107c41";
-                    document.getElementById('file-label').style.borderColor = "#107c41";
-                };
-                reader.readAsDataURL(file);
+        // ======= 2. 登入與資料抓取 =======
+        async function signIn() {
+            try {
+                const loginResponse = await myMsal.loginPopup({ scopes: ["User.Read", "Sites.Read.All"] });
+                document.getElementById('login-screen').classList.add('hidden');
+                document.getElementById('display-name').innerText = "User: " + loginResponse.account.name;
+                fetchListData();
+            } catch (e) { console.error(e); }
+        }
+
+        async function fetchListData() {
+            try {
+                const accounts = myMsal.getAllAccounts();
+                const tokenResponse = await myMsal.acquireTokenSilent({ scopes: ["Sites.Read.All"], account: accounts[0] });
+                const endpoint = `https://graph.microsoft.com/v1.0/sites/${sharepointConfig.siteId}/lists/${sharepointConfig.listId}/items?expand=fields`;
+                
+                const response = await fetch(endpoint, { headers: { 'Authorization': `Bearer ${tokenResponse.accessToken}` } });
+                const data = await response.json();
+                
+                if (data.value && data.value.length > 0) {
+                    const fields = data.value[data.value.length - 1].fields;
+                    fetchedData = { 
+                        date: fields.ExpenseDateandTime || "N/A", 
+                        amount: fields.ExpenseAmount || "0.00" 
+                    };
+                    document.getElementById('data-status').innerHTML = `
+                        <strong>Auto-fetched Data:</strong><br>
+                        Last Record: ${fetchedData.date} | Amount: <span style="color:#d83b01; font-weight:bold;">$${fetchedData.amount}</span>
+                    `;
+                }
+            } catch (e) { 
+                document.getElementById('data-status').innerText = "Error syncing with SharePoint.";
+                console.error(e); 
             }
         }
 
-        // Add Item to Local State
+        // ======= 3. UI 邏輯 =======
+        function handleFileSelect(input) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                currentFileData = e.target.result;
+                document.getElementById('temp-preview').src = currentFileData;
+                document.getElementById('temp-preview').classList.remove('hidden');
+                document.getElementById('file-label').innerText = "✅ Receipt Attached";
+            };
+            reader.readAsDataURL(input.files[0]);
+        }
+
         function addItem() {
             const merchant = document.getElementById('new-merchant').value;
-            const category = document.getElementById('new-category').value;
-            const date = document.getElementById('fetched-date').innerText;
-            const amount = document.getElementById('fetched-amount').innerText;
-
-            if (!merchant || !currentFileData) {
-                alert("Please enter a merchant name and upload a receipt.");
-                return;
-            }
+            if (!merchant || !currentFileData) return alert("Please fill merchant and add photo.");
 
             expenseItems.push({
-                id: Date.now(),
+                ...fetchedData,
                 merchant,
-                category,
-                date,
-                amount,
+                category: document.getElementById('new-category').value,
                 image: currentFileData,
+                id: Date.now(),
                 legacyId: ""
             });
-
             renderItems();
             resetForm();
         }
 
-        // Render List Items
         function renderItems() {
             const container = document.getElementById('items-container');
-            const exportSection = document.getElementById('export-section');
             container.innerHTML = "";
+            document.getElementById('empty-msg').style.display = expenseItems.length === 0 ? "block" : "none";
+            document.getElementById('export-section').className = expenseItems.length === 0 ? "hidden" : "";
             
-            if (expenseItems.length === 0) {
-                document.getElementById('empty-msg').style.display = "block";
-                exportSection.classList.add('hidden');
-                return;
-            }
-
-            document.getElementById('empty-msg').style.display = "none";
-            exportSection.classList.remove('hidden');
-
-            expenseItems.forEach((item) => {
-                const row = document.createElement('div');
-                row.className = "item-row";
-                row.innerHTML = `
+            expenseItems.forEach(item => {
+                const div = document.createElement('div');
+                div.className = "item-row";
+                div.innerHTML = `
                     <input type="checkbox" class="item-checkbox" data-id="${item.id}" checked style="width:20px; height:20px;">
                     <img src="${item.image}" class="item-thumb">
                     <div class="item-info">
-                        <b style="font-size:15px;">${item.merchant} (${item.amount})<span class="status-tag">Ready</span></b><br>
-                        <span style="font-size:12px; color:#666;">${item.date} · ${item.category}</span>
-                        <input type="text" class="form-control id-input" 
-                               placeholder="Set Legacy ID (e.g., 101)" 
-                               value="${item.legacyId}"
-                               onchange="updateLegacyId(${item.id}, this.value)">
+                        <b>${item.merchant} ($${item.amount})</b><br>
+                        <span style="font-size:12px; color:#666;">${item.date}</span>
+                        <input type="text" class="form-control" style="margin-top:5px; padding:8px;" placeholder="Legacy ID" onchange="updateLegacyId(${item.id}, this.value)">
                     </div>
                 `;
-                container.appendChild(row);
+                container.appendChild(div);
             });
         }
 
@@ -192,79 +209,35 @@
         }
 
         function clearHistory() {
-            if (confirm("This will clear all items from your current session. Continue?")) {
-                expenseItems = [];
-                renderItems();
-            }
+            if (confirm("Clear session?")) { expenseItems = []; renderItems(); }
         }
 
         function resetForm() {
             document.getElementById('new-merchant').value = "";
             document.getElementById('temp-preview').classList.add('hidden');
-            document.getElementById('file-label').innerHTML = "📸 Take Photo / Upload Receipt";
-            document.getElementById('file-label').style.color = "#0078d4";
-            document.getElementById('file-label').style.borderColor = "#0078d4";
+            document.getElementById('file-label').innerText = "📸 Take Photo / Upload Receipt";
             currentFileData = "";
         }
 
-        // Batch Export with Numeric Sorting and Large Image Display
         function exportSelected() {
             const checkedIds = Array.from(document.querySelectorAll('.item-checkbox:checked')).map(cb => parseInt(cb.dataset.id));
             const selectedItems = expenseItems.filter(i => checkedIds.includes(i.id));
+            selectedItems.sort((a,b) => (a.legacyId||"").localeCompare(b.legacyId||"", undefined, {numeric:true}));
 
-            if (selectedItems.length === 0) return alert("Please select items to export.");
-
-            // Sort by Legacy ID (tries numeric sort first, then alphabetical)
-            selectedItems.sort((a, b) => {
-                const idA = a.legacyId || "";
-                const idB = b.legacyId || "";
-                return idA.localeCompare(idB, undefined, {numeric: true, sensitivity: 'base'});
-            });
-
-            let htmlContent = "";
+            let htmlBody = "";
             selectedItems.forEach(item => {
-                htmlContent += `
-                    <div style="border: 2px solid #333; padding: 40px; margin-bottom: 60px; page-break-after: always; max-width: 850px; margin-left: auto; margin-right: auto; background: white;">
-                        <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 4px solid #0078d4; padding-bottom: 15px;">
-                            <h1 style="margin:0; color:#0078d4;">Expense Voucher</h1>
-                            <div style="text-align: right;">
-                                <span style="font-size: 1.2em; font-weight: bold; background: #0078d4; color: white; padding: 5px 15px; border-radius: 4px;">
-                                    Legacy ID: ${item.legacyId || "N/A"}
-                                </span>
-                            </div>
-                        </div>
-                        
-                        <table style="width: 100%; margin-top: 30px; border-collapse: collapse; font-size: 1.1em;">
-                            <tr><td style="padding: 10px; border-bottom: 1px solid #eee; font-weight: bold; width: 30%;">Merchant:</td><td style="padding: 10px; border-bottom: 1px solid #eee;">${item.merchant}</td></tr>
-                            <tr><td style="padding: 10px; border-bottom: 1px solid #eee; font-weight: bold;">Category:</td><td style="padding: 10px; border-bottom: 1px solid #eee;">${item.category}</td></tr>
-                            <tr><td style="padding: 10px; border-bottom: 1px solid #eee; font-weight: bold;">Date:</td><td style="padding: 10px; border-bottom: 1px solid #eee;">${item.date}</td></tr>
-                            <tr><td style="padding: 10px; border-bottom: 1px solid #eee; font-weight: bold;">Total Amount:</td><td style="padding: 10px; border-bottom: 1px solid #eee; font-weight: bold; color: #d83b01; font-size: 1.2em;">USD ${item.amount}</td></tr>
-                        </table>
-
-                        <h3 style="margin-top: 40px; border-left: 5px solid #0078d4; padding-left: 10px;">Scanned Receipt Copy</h3>
-                        <div style="text-align: center; margin-top: 20px;">
-                            <img src="${item.image}" style="max-width: 100%; border: 1px solid #ddd; box-shadow: 0 0 10px rgba(0,0,0,0.1);">
-                        </div>
-                        
-                        <div style="margin-top: 50px; font-size: 12px; color: #888; text-align: center; border-top: 1px solid #eee; padding-top: 10px;">
-                            Report generated on ${new Date().toLocaleString()} for audit comparison.
-                        </div>
-                    </div>
-                `;
+                htmlBody += `
+                    <div style="border: 2px solid #333; padding: 40px; margin-bottom: 60px; page-break-after: always; max-width: 800px; margin: auto; background: white;">
+                        <h1 style="color:#0078d4; border-bottom: 4px solid #0078d4;">Expense Voucher - ID: ${item.legacyId || "N/A"}</h1>
+                        <p><b>Merchant:</b> ${item.merchant} | <b>Amount:</b> $${item.amount} | <b>Date:</b> ${item.date}</p>
+                        <img src="${item.image}" style="max-width: 100%; border: 1px solid #ddd;">
+                    </div>`;
             });
 
-            const blob = new Blob([`
-                <html>
-                <head><title>Expense_Batch_Report</title></head>
-                <body style="background:#f3f2f1; padding: 50px; font-family: 'Segoe UI', Arial, sans-serif;">
-                    ${htmlContent}
-                </body>
-                </html>
-            `], { type: 'text/html' });
-
+            const blob = new Blob([`<html><body style="font-family:sans-serif;padding:50px;background:#f3f2f1;">${htmlBody}</body></html>`], { type: 'text/html' });
             const link = document.createElement('a');
             link.href = URL.createObjectURL(blob);
-            link.download = `Expense_Report_Batch_${new Date().getTime()}.html`;
+            link.download = `Batch_Report_${Date.now()}.html`;
             link.click();
         }
     </script>

@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Global Expense Portal - Batch Export v4.1</title>
+    <style>
+        /* Base Styling */
+        body { font-family: 'Segoe UI', Arial, sans-serif; background-color: #f3f2f1; margin: 0; padding: 0; color: #323130; }
+        .header { background-color: #0078d4; color: white; padding: 15px 20px; font-size: 20px; font-weight: bold; display: flex; justify-content: space-between; align-items: center; }
+        .container { padding: 20px; max-width: 800px; margin: 0 auto; }
+        
+        /* Layout Modules */
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 20px; box-sizing: border-box; }
+        .section-title { margin: 0; font-size: 18px; border-left: 4px solid #0078d4; padding-left: 10px; color: #0078d4; display: inline-block; }
+        
+        /* Form Components */
+        .form-group { margin-top: 15px; }
+        .form-group label { display: block; font-size: 14px; font-weight: 600; margin-bottom: 5px; }
+        .form-control { width: 100%; padding: 12px; border: 1px solid #a6a6a6; border-radius: 6px; box-sizing: border-box; font-size: 16px; font-family: inherit; }
+        .form-control:focus { outline: none; border-color: #0078d4; }
+        
+        /* Buttons - FIXED BOX-SIZING */
+        .btn { padding: 14px; border-radius: 6px; cursor: pointer; border: none; font-size: 16px; font-weight: bold; width: 100%; text-align: center; display: block; transition: 0.2s; box-sizing: border-box; text-decoration: none; }
+        .btn-primary { background: #0078d4; color: white; }
+        .btn-primary:hover { background: #005a9e; }
+        .btn-outline { background: white; color: #0078d4; border: 1px solid #0078d4; }
+        .btn-outline:hover { background: #f3f2f1; }
+        .btn-success { background: #107c41; color: white; margin-top: 15px; }
+        .btn-success:hover { background: #0b5a30; }
+        .btn-danger { background: #a4262c; color: white; padding: 6px 12px; font-size: 12px; width: auto; border-radius: 4px; }
+
+        /* Queue List */
+        .item-row { display: flex; align-items: center; background: white; padding: 15px; border-radius: 8px; margin-top: 10px; border: 1px solid #edebe9; gap: 15px; box-sizing: border-box; }
+        .item-thumb { width: 80px; height: 80px; border-radius: 4px; object-fit: cover; border: 1px solid #ddd; flex-shrink: 0; }
+        .item-info { flex-grow: 1; min-width: 0; } /* min-width prevents flex items from overflowing */
+        .id-input { width: 100% !important; border-color: #0078d4 !important; font-weight: bold; margin-top: 8px; }
+
+        input[type="file"] { display: none; }
+        .hidden { display: none; }
+        .status-tag { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: #fff4ce; color: #797775; font-weight: bold; margin-left: 5px; vertical-align: middle; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <span>Global Expense Portal</span>
+        <span style="font-size: 14px; font-weight: normal;">User: Jack Kuo</span>
+    </div>
+
+    <div class="container">
+        <div class="card">
+            <h3 class="section-title">New Request</h3>
+            
+            <div style="background: #f8f8f8; padding: 12px; border-radius: 6px; margin-top: 15px; font-size: 14px; border-left: 4px solid #888;">
+                <strong>Auto-fetched Data:</strong><br>
+                Date: <span id="fetched-date">Jan 29, 2026</span> | 
+                Amount: <span id="fetched-amount" style="color:#d83b01; font-weight:bold;">$179.31</span>
+            </div>
+
+            <div class="form-group">
+                <label>Merchant Name</label>
+                <input type="text" id="new-merchant" class="form-control" placeholder="e.g., Uber, Starbucks, Hilton">
+            </div>
+
+            <div class="form-group">
+                <label>Category</label>
+                <select id="new-category" class="form-control">
+                    <option value="Transportation">🚗 Transportation</option>
+                    <option value="Meals" selected>🍔 Meals & Entertainment</option>
+                    <option value="Accommodation">🏨 Accommodation</option>
+                    <option value="Gifts">🎁 Business Gifts</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Receipt Image</label>
+                <label class="btn btn-outline" id="file-label">
+                    📸 Take Photo / Upload Receipt
+                    <input type="file" id="new-file" accept="image/*" onchange="handleFileSelect(this)">
+                </label>
+                <img id="temp-preview" class="hidden" style="width: 100%; margin-top: 15px; border-radius: 6px; border: 1px solid #ddd;">
+            </div>
+
+            <button class="btn btn-primary" style="margin-top: 20px;" onclick="addItem()">Add to Queue</button>
+        </div>
+
+        <div class="item-list">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <h3 class="section-title">Queue & Batch Export</h3>
+                <button class="btn-danger" onclick="clearHistory()">🗑️ Clear History</button>
+            </div>
+            
+            <div id="items-container">
+                <p id="empty-msg" style="text-align: center; color: #666; padding: 40px; background: #fff; border-radius: 8px;">Your queue is currently empty.</p>
+            </div>
+            
+            <div id="export-section" class="hidden">
+                <p style="font-size: 12px; color: #666; margin-top: 15px; background: #fff; padding: 10px; border-radius: 4px; border-left: 4px solid #107c41;">
+                    <b>Report Logic:</b> Items will be sorted <b>numerically</b> by Legacy ID in the final export for easy comparison with the old system.
+                </p>
+                <button class="btn btn-success" id="export-btn" onclick="exportSelected()">📥 Export Selected to Batch Report (HTML)</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let expenseItems = [];
+        let currentFileData = "";
+
+        // Handle File Selection and Preview
+        function handleFileSelect(input) {
+            const file = input.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    currentFileData = e.target.result;
+                    const preview = document.getElementById('temp-preview');
+                    preview.src = currentFileData;
+                    preview.classList.remove('hidden');
+                    document.getElementById('file-label').innerHTML = "✅ Receipt Attached";
+                    document.getElementById('file-label').style.color = "#107c41";
+                    document.getElementById('file-label').style.borderColor = "#107c41";
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        // Add Item to Local State
+        function addItem() {
+            const merchant = document.getElementById('new-merchant').value;
+            const category = document.getElementById('new-category').value;
+            const date = document.getElementById('fetched-date').innerText;
+            const amount = document.getElementById('fetched-amount').innerText;
+
+            if (!merchant || !currentFileData) {
+                alert("Please enter a merchant name and upload a receipt.");
+                return;
+            }
+
+            expenseItems.push({
+                id: Date.now(),
+                merchant,
+                category,
+                date,
+                amount,
+                image: currentFileData,
+                legacyId: ""
+            });
+
+            renderItems();
+            resetForm();
+        }
+
+        // Render List Items
+        function renderItems() {
+            const container = document.getElementById('items-container');
+            const exportSection = document.getElementById('export-section');
+            container.innerHTML = "";
+            
+            if (expenseItems.length === 0) {
+                document.getElementById('empty-msg').style.display = "block";
+                exportSection.classList.add('hidden');
+                return;
+            }
+
+            document.getElementById('empty-msg').style.display = "none";
+            exportSection.classList.remove('hidden');
+
+            expenseItems.forEach((item) => {
+                const row = document.createElement('div');
+                row.className = "item-row";
+                row.innerHTML = `
+                    <input type="checkbox" class="item-checkbox" data-id="${item.id}" checked style="width:20px; height:20px;">
+                    <img src="${item.image}" class="item-thumb">
+                    <div class="item-info">
+                        <b style="font-size:15px;">${item.merchant} (${item.amount})<span class="status-tag">Ready</span></b><br>
+                        <span style="font-size:12px; color:#666;">${item.date} · ${item.category}</span>
+                        <input type="text" class="form-control id-input" 
+                               placeholder="Set Legacy ID (e.g., 101)" 
+                               value="${item.legacyId}"
+                               onchange="updateLegacyId(${item.id}, this.value)">
+                    </div>
+                `;
+                container.appendChild(row);
+            });
+        }
+
+        function updateLegacyId(id, val) {
+            const item = expenseItems.find(i => i.id === id);
+            if (item) item.legacyId = val;
+        }
+
+        function clearHistory() {
+            if (confirm("This will clear all items from your current session. Continue?")) {
+                expenseItems = [];
+                renderItems();
+            }
+        }
+
+        function resetForm() {
+            document.getElementById('new-merchant').value = "";
+            document.getElementById('temp-preview').classList.add('hidden');
+            document.getElementById('file-label').innerHTML = "📸 Take Photo / Upload Receipt";
+            document.getElementById('file-label').style.color = "#0078d4";
+            document.getElementById('file-label').style.borderColor = "#0078d4";
+            currentFileData = "";
+        }
+
+        // Batch Export with Numeric Sorting and Large Image Display
+        function exportSelected() {
+            const checkedIds = Array.from(document.querySelectorAll('.item-checkbox:checked')).map(cb => parseInt(cb.dataset.id));
+            const selectedItems = expenseItems.filter(i => checkedIds.includes(i.id));
+
+            if (selectedItems.length === 0) return alert("Please select items to export.");
+
+            // Sort by Legacy ID (tries numeric sort first, then alphabetical)
+            selectedItems.sort((a, b) => {
+                const idA = a.legacyId || "";
+                const idB = b.legacyId || "";
+                return idA.localeCompare(idB, undefined, {numeric: true, sensitivity: 'base'});
+            });
+
+            let htmlContent = "";
+            selectedItems.forEach(item => {
+                htmlContent += `
+                    <div style="border: 2px solid #333; padding: 40px; margin-bottom: 60px; page-break-after: always; max-width: 850px; margin-left: auto; margin-right: auto; background: white;">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 4px solid #0078d4; padding-bottom: 15px;">
+                            <h1 style="margin:0; color:#0078d4;">Expense Voucher</h1>
+                            <div style="text-align: right;">
+                                <span style="font-size: 1.2em; font-weight: bold; background: #0078d4; color: white; padding: 5px 15px; border-radius: 4px;">
+                                    Legacy ID: ${item.legacyId || "N/A"}
+                                </span>
+                            </div>
+                        </div>
+                        
+                        <table style="width: 100%; margin-top: 30px; border-collapse: collapse; font-size: 1.1em;">
+                            <tr><td style="padding: 10px; border-bottom: 1px solid #eee; font-weight: bold; width: 30%;">Merchant:</td><td style="padding: 10px; border-bottom: 1px solid #eee;">${item.merchant}</td></tr>
+                            <tr><td style="padding: 10px; border-bottom: 1px solid #eee; font-weight: bold;">Category:</td><td style="padding: 10px; border-bottom: 1px solid #eee;">${item.category}</td></tr>
+                            <tr><td style="padding: 10px; border-bottom: 1px solid #eee; font-weight: bold;">Date:</td><td style="padding: 10px; border-bottom: 1px solid #eee;">${item.date}</td></tr>
+                            <tr><td style="padding: 10px; border-bottom: 1px solid #eee; font-weight: bold;">Total Amount:</td><td style="padding: 10px; border-bottom: 1px solid #eee; font-weight: bold; color: #d83b01; font-size: 1.2em;">USD ${item.amount}</td></tr>
+                        </table>
+
+                        <h3 style="margin-top: 40px; border-left: 5px solid #0078d4; padding-left: 10px;">Scanned Receipt Copy</h3>
+                        <div style="text-align: center; margin-top: 20px;">
+                            <img src="${item.image}" style="max-width: 100%; border: 1px solid #ddd; box-shadow: 0 0 10px rgba(0,0,0,0.1);">
+                        </div>
+                        
+                        <div style="margin-top: 50px; font-size: 12px; color: #888; text-align: center; border-top: 1px solid #eee; padding-top: 10px;">
+                            Report generated on ${new Date().toLocaleString()} for audit comparison.
+                        </div>
+                    </div>
+                `;
+            });
+
+            const blob = new Blob([`
+                <html>
+                <head><title>Expense_Batch_Report</title></head>
+                <body style="background:#f3f2f1; padding: 50px; font-family: 'Segoe UI', Arial, sans-serif;">
+                    ${htmlContent}
+                </body>
+                </html>
+            `], { type: 'text/html' });
+
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `Expense_Report_Batch_${new Date().getTime()}.html`;
+            link.click();
+        }
+    </script>
+</body>
+</html>
